@@ -1,17 +1,18 @@
 package main
 
 import (
-		"bytes"
-		"encoding/json"
-		"os"
-		"os/exec"
-		"io"
-		"io/ioutil"
-		"strings"
-		"net/http"
-		"path"
+	"bytes"
+	"encoding/json"
+	"io"
+	"io/ioutil"
+	"net/http"
+	"os"
+	"os/exec"
+	"path"
+	"runtime"
+	"strings"
 
-		"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/lipgloss"
 )
 
 func GetBat() string {
@@ -43,10 +44,14 @@ func GetSpotAlb() string {
 		output, err := cmd.Output()
 
 		if err != nil {
-				panic(err)
+			output = []byte("Unknown")
 		}
 
 		info := strings.TrimSuffix(string(output), "\n")
+		
+		if len(info) >= 20 {
+			info = info[:18]
+		}
 
 		spotInfo := lipgloss.NewStyle().Height(1).Width(20).Render(info)
 
@@ -62,10 +67,14 @@ func GetSpot() string {
 		output, err := cmd.Output()
 
 		if err != nil {
-				panic(err)
+			output = []byte("Spotify - Not Available")
 		}
 
 		info := strings.TrimSuffix(string(output), "\n")
+		
+		if len(info) >= 40 {
+			info = info[:38]
+		}
 
 		spotInfo := lipgloss.NewStyle().Height(1).Width(40).Render(info)
 
@@ -114,22 +123,55 @@ func GetHost() string {
 }
 
 func GetOS() string {
-		cmd := exec.Command("lsb_release", "-sd")
-		cmd.Stdin = os.Stdin
-		cmd.Stderr = os.Stderr
+		if runtime.GOOS == "linux" {
+			cmd := exec.Command("lsb_release", "-sd")
+			cmd.Stdin = os.Stdin
+			cmd.Stderr = os.Stderr
 
-		os, err := cmd.Output()
+			os, err := cmd.Output()
 
-		if err != nil {
-				panic(err)
-		}
+			if err != nil {
+					panic(err)
+			}
 
-		if strings.Contains(string(os), "Void") {
-				return "void"
-		} else if strings.Contains(string(os), "Arch") {
-				return "arch"
-		} else if strings.Contains(string(os), "Ubuntu") {
-				return "ubuntu"
+			if strings.Contains(string(os), "Void") {
+					return "void"
+			} else if strings.Contains(string(os), "Arch") {
+					return "arch"
+			} else if strings.Contains(string(os), "Ubuntu") {
+					return "ubuntu"
+			} else {
+				return "unknown"
+			}
+		} else if runtime.GOOS == "darwin" {
+			cmd := exec.Command("sw_vers", "-productVersion")
+			wc := exec.Command("awk", "-F", "[.]", "{print $2}")
+
+			read, write := io.Pipe()
+			var buf bytes.Buffer
+
+			cmd.Stdout = write
+			wc.Stdin = read
+			wc.Stdout = &buf
+
+			cmd.Start()
+			wc.Start()
+
+			cmd.Wait()
+			write.Close()
+
+			wc.Wait()
+			read.Close()
+
+			if buf.String() == "13\n" || buf.String() == "12\n" {
+				return "sierra"
+			} else if buf.String() == "14\n" {
+				return "mojave"
+			} else if buf.String() == "15\n" {
+				return "big sur"
+			}
+			
+			return "macos"
 		} else {
 				return "unknown"
 		}
@@ -177,7 +219,28 @@ func GetPks() string {
 				read.Close()
 
 				return strings.TrimSuffix(buf.String(), "\n")
+		} else if runtime.GOOS == "darwin" {
+				cmd := exec.Command("brew", "list")
+				wc := exec.Command("wc", "-l")
+
+				read, write := io.Pipe()
+				var buf bytes.Buffer
+
+				cmd.Stdout = write
+				wc.Stdin = read
+				wc.Stdout = &buf
+
+				cmd.Start()
+				wc.Start()
+
+				cmd.Wait()
+				write.Close()
+
+				wc.Wait()
+				read.Close()
+
+				return strings.TrimSpace(buf.String())
 		}
 
-		return "calculating"
+		return "calc"
 }
